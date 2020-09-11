@@ -710,8 +710,8 @@ static void xc_debug_dump(struct xc5000_priv *priv)
 		(totalgain % 256) * 100 / 256);
 
 	if (priv->pll_register_no) {
-		xc5000_readreg(priv, priv->pll_register_no, &regval);
-		dprintk(1, "*** PLL lock status = 0x%04x\n", regval);
+		if (!xc5000_readreg(priv, priv->pll_register_no, &regval))
+			dprintk(1, "*** PLL lock status = 0x%04x\n", regval);
 	}
 }
 
@@ -853,15 +853,16 @@ static int xc5000_is_firmware_loaded(struct dvb_frontend *fe)
 	u16 id;
 
 	ret = xc5000_readreg(priv, XREG_PRODUCT_ID, &id);
-	if (ret == 0) {
+	if (!ret) {
 		if (id == XC_PRODUCT_ID_FW_NOT_LOADED)
 			ret = -ENOENT;
 		else
 			ret = 0;
+		dprintk(1, "%s() returns id = 0x%x\n", __func__, id);
+	} else {
+		dprintk(1, "%s() returns error %d\n", __func__, ret);
 	}
 
-	dprintk(1, "%s() returns %s id = 0x%x\n", __func__,
-		ret == 0 ? "True" : "False", id);
 	return ret;
 }
 
@@ -957,7 +958,10 @@ tune_channel:
 
 	if (priv->pll_register_no != 0) {
 		msleep(20);
-		xc5000_readreg(priv, priv->pll_register_no, &pll_lock_status);
+		ret = xc5000_readreg(priv, priv->pll_register_no,
+				     &pll_lock_status);
+		if (ret)
+			return ret;
 		if (pll_lock_status > 63) {
 			/* PLL is unlocked, force reload of the firmware */
 			dprintk(1, "xc5000: PLL not locked (0x%x).  Reloading...\n",
@@ -1213,8 +1217,10 @@ static int xc_load_fw_and_init_tuner(struct dvb_frontend *fe, int force)
 		}
 
 		if (priv->pll_register_no) {
-			xc5000_readreg(priv, priv->pll_register_no,
-				       &pll_lock_status);
+			ret = xc5000_readreg(priv, priv->pll_register_no,
+					     &pll_lock_status);
+			if (ret)
+				continue;
 			if (pll_lock_status > 63) {
 				/* PLL is unlocked, force reload of the firmware */
 				printk(KERN_ERR
